@@ -1006,6 +1006,7 @@ int SerialPnp_OpenDevice(const char* port, DWORD baudRate)
 
     set_interface_attribs(fd, B115200, 0);  // set speed to 115,200 bps, 8n1 (no parity)
     //set_blocking(fd, 1);  // set no blocking
+	ThreadAPI_Sleep(3000);
 #endif
 
     PSERIAL_DEVICE_CONTEXT deviceContext = malloc(sizeof(SERIAL_DEVICE_CONTEXT));
