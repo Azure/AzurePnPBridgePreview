@@ -165,7 +165,7 @@ PnpBridge_IsRunningInEdgeRuntime()
     bool dockerizedModule = false;
     const char * iotEdgeWorkLoadUri = getenv(g_workloadURIEnvironmentVariable);
     dockerizedModule = (iotEdgeWorkLoadUri != NULL);
-    LogInfo("%s", ((dockerizedModule) ? "Pnp Bridge is running in a dockerized edge module." : "Pnp Bridge is running as am IoT egde device."));
+    LogInfo("%s", ((dockerizedModule) ? "Pnp Bridge is running on an IoT edge module." : "Pnp Bridge is running on an IoT device."));
     return dockerizedModule;
 }
 

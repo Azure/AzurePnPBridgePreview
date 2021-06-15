@@ -55,6 +55,12 @@ if(${use_edge_modules})
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUSE_EDGE_MODULES")
 endif()
 
+# Enable optional trusted cert
+if(${use_sample_trusted_cert})
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSET_TRUSTED_CERT")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DSET_TRUSTED_CERT")
+endif()
+
 #Enable DPS Provisioning
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_PROV_MODULE_FULL")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUSE_PROV_MODULE_FULL")
