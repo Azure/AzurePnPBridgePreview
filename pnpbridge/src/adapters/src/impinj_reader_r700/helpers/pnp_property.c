@@ -41,7 +41,8 @@ GetDesiredJson(
 /****************************************************************
 A callback for Property Update (DEVICE_TWIN_UPDATE_COMPLETE)
 ****************************************************************/
-bool OnPropertyCompleteCallback(
+bool
+OnPropertyCompleteCallback(
     PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
     JSON_Value* JsonVal_Payload,
     void* UserContextCallback)
@@ -82,9 +83,9 @@ bool OnPropertyCompleteCallback(
         int status                          = PNP_STATUS_SUCCESS;
 
         // Device Twin may not have properties for this component right after provisioning
-        if (device->ComponentName != NULL && (jsonObj_Desired_Component = json_object_get_object(jsonObj_Desired, device->ComponentName)) == NULL)
+        if (device->SensorState->componentName != NULL && (jsonObj_Desired_Component = json_object_get_object(jsonObj_Desired, device->SensorState->componentName)) == NULL)
         {
-            LogInfo("R700 : Unable to retrieve desired JSON Object for Component %s", device->ComponentName);
+            LogInfo("R700 : Unable to retrieve desired JSON Object for Component %s", device->SensorState->componentName);
         }
 
         for (i = 0; i < (sizeof(R700_REST_LIST) / sizeof(IMPINJ_R700_REST)); i++)
@@ -99,6 +100,25 @@ bool OnPropertyCompleteCallback(
                 status = R700_STATUS_NOT_ALLOWED;
                 break;
             }
+            else if (device->Flags.IsRESTEnabled == 0 && R700_REST_LIST[i].IsRestRequired == true)
+            {
+                LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+                status = R700_STATUS_CONFLICT;
+                break;
+            }
+            else if (device->Flags.IsRebootPending == 1)
+            {
+                LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+                status = R700_STATUS_CONFLICT;
+                break;
+            }
+            else if (device->Flags.IsShuttingDown == 1)
+            {
+                LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+                status = R700_STATUS_CONFLICT;
+                break;
+            }
+
 
             switch (r700_Request->DtdlType)
             {
@@ -107,7 +127,7 @@ bool OnPropertyCompleteCallback(
 
                 case READONLY:
                     jsonVal_Rest = ImpinjReader_RequestGet(device, r700_Request, NULL, &status);
-                    UpdateReadOnlyReportProperty(PnpComponentHandle, device->ComponentName, r700_Request->Name, jsonVal_Rest);
+                    UpdateReadOnlyReportProperty(PnpComponentHandle, device->SensorState->componentName, r700_Request->Name, jsonVal_Rest);
                     break;
 
                 case WRITABLE:
@@ -127,6 +147,11 @@ bool OnPropertyCompleteCallback(
 
                     break;
             }
+
+            if (jsonVal_Rest)
+            {
+                json_value_free(jsonVal_Rest);
+            }
         }
         bRet = true;
     }
@@ -137,7 +162,8 @@ bool OnPropertyCompleteCallback(
 /****************************************************************
 A callback for Property Update (DEVICE_TWIN_UPDATE_PARTIAL)
 ****************************************************************/
-void OnPropertyPatchCallback(
+void
+OnPropertyPatchCallback(
     PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
     const char* PropertyName,
     JSON_Value* JsonVal_Property,
@@ -173,6 +199,18 @@ void OnPropertyPatchCallback(
         if (device->ApiVersion < r700_Request->ApiVersion)
         {
             LogError("R700 : Unsupported API. Please upgrade firmware");
+        }
+        else if (device->Flags.IsRebootPending == 1)
+        {
+            LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+        }
+        else if (device->Flags.IsRESTEnabled == 0 && R700_REST_LIST[i].IsRestRequired == true)
+        {
+            LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+        }
+        else if (device->Flags.IsShuttingDown == 1)
+        {
+            LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
         }
         else if ((payload = json_serialize_to_string(JsonVal_Property)) == NULL)
         {
@@ -279,7 +317,7 @@ UpdateReadOnlyReportPropertyEx(
         }
         else
         {
-            LogInfo("R700 : Send Read Only Property %s to IoT Hub", PropertyName);
+            LogInfo("R700 : Sent Read Only Property %s to IoT Hub", PropertyName);
         }
 
         STRING_delete(jsonToSend);
@@ -325,7 +363,7 @@ UpdateWritableProperty(
     const char* descToSend        = Ad;
     char* propertyValue           = NULL;
 
-    //LogJsonPretty("R700 : %s() enter AC=%d AV=%d AD=%s", JsonVal_Property, __FUNCTION__, Ac, Av, Ad);
+    LogJsonPretty("R700 : %s() enter AC=%d AV=%d AD=%s", JsonVal_Property, __FUNCTION__, Ac, Av, Ad);
 
     // Check status (Ack Code)
     switch (Ac)
@@ -348,7 +386,7 @@ UpdateWritableProperty(
         case R700_STATUS_BAD_REQUEST:
         case R700_STATUS_FORBIDDEN:
         case R700_STATUS_NOT_FOUND:
-        case R700_STATUS_NOT_CONFLICT:
+        case R700_STATUS_CONFLICT:
         case R700_STATUS_INTERNAL_ERROR:
             // Errors
             assert(JsonVal_Property != NULL);

@@ -18,12 +18,14 @@ extern "C" {
 static const char g_IoTHubTwinDesiredVersion[]    = "$version";
 static const char g_IoTHubTwinDesiredObjectName[] = "desired";
 
-bool OnPropertyCompleteCallback(
+bool
+OnPropertyCompleteCallback(
     PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
     JSON_Value* JsonVal_Payload,
     void* UserContextCallback);
 
-void OnPropertyPatchCallback(
+void
+OnPropertyPatchCallback(
     PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
     const char* PropertyName,
     JSON_Value* JsonVal_Property,
@@ -45,7 +47,8 @@ UpdateReadOnlyReportProperty(
     char* PropertyName,
     JSON_Value* JsonVal_Property);
 
-IOTHUB_CLIENT_RESULT UpdateWritableProperty(
+IOTHUB_CLIENT_RESULT
+UpdateWritableProperty(
     PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
     PIMPINJ_R700_REST RestRequest,
     JSON_Value* JsonVal_Property,

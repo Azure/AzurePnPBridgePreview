@@ -2,7 +2,8 @@
 #include "pnp_property.h"
 #include "led.h"
 
-char* CreateTelemetryMessage(
+char*
+CreateTelemetryMessage(
     char* MessageData)
 {
     JSON_Value* jsonVal_Message = NULL;
@@ -34,9 +35,9 @@ char* CreateTelemetryMessage(
         messageData = json_serialize_to_string(jsonVal_Message);
     }
 
-    if (jsonVal_Message)
+    if (jsonVal_Message_Content)
     {
-        json_value_free(jsonVal_Message);
+        json_value_free(jsonVal_Message_Content);
     }
 
     return messageData;
@@ -57,7 +58,7 @@ ProcessReaderTelemetry(
 
     while (uSecTimer < uSecTarget)
     {
-        if (device->ShuttingDown)
+        if ((device->Flags.AsUSHORT & 0xc) != 0)
         {
             break;
         }
@@ -82,6 +83,7 @@ ProcessReaderTelemetry(
             {
                 LogError("R700 : ProcessReaderTelemetry failed, error=%d", result);
             }
+
             // continue splitting until all messages are sent individually
             oneMessage = strtok(NULL, MESSAGE_SPLIT_DELIMITER);
         }
@@ -98,9 +100,7 @@ SendTelemetryMessages(
     IOTHUB_MESSAGE_HANDLE messageHandle;
     PIMPINJ_READER device = PnpComponentHandleGetContext(PnpComponentHandle);
     PIMPINJ_R700_MESSAGE_CONTEXT callbackContext;
-    PNP_BRIDGE_CLIENT_HANDLE clientHandle = PnpComponentHandleGetClientHandle(PnpComponentHandle);
-
-    assert(device);
+    PNP_BRIDGE_CLIENT_HANDLE clientHandle;
 
     if ((messageHandle = PnP_CreateTelemetryMessageHandle(device->SensorState->componentName, Message)) == NULL)
     {
@@ -286,7 +286,8 @@ TelemetryCallback(
     free(messageContext);
 }
 
-int ImpinjReader_TelemetryWorker(
+int
+ImpinjReader_TelemetryWorker(
     void* context)
 {
     PNPBRIDGE_COMPONENT_HANDLE componentHandle = (PNPBRIDGE_COMPONENT_HANDLE)context;
@@ -330,7 +331,6 @@ int ImpinjReader_TelemetryWorker(
 
         if (httpStatus < R700_STATUS_BAD_REQUEST)
         {
-
             jsonObjectStatus       = json_value_get_object(jsonValueStatus);
             jsonValueStatusNotime  = json_value_deep_copy(jsonValueStatus);
             jsonObjectStatusNotime = json_value_get_object(jsonValueStatusNotime);
@@ -345,7 +345,7 @@ int ImpinjReader_TelemetryWorker(
             if (statusNoTime != NULL && statusNoTimePrev != NULL && strcmp(statusNoTime, statusNoTimePrev) != 0)
             {   // send status update only on change in status
                 LogJsonPretty("Status Update: ", jsonValueStatus);
-                UpdateReadOnlyReportProperty(componentHandle, device->ComponentName, r700_GetStatusRequest->Name, jsonValueStatus);
+                UpdateReadOnlyReportProperty(componentHandle, device->SensorState->componentName, r700_GetStatusRequest->Name, jsonValueStatus);
             }
         }
 
@@ -355,9 +355,10 @@ int ImpinjReader_TelemetryWorker(
             jsonValueStatus = NULL;
         }
 
-        if (device->ShuttingDown)
+        if ((device->Flags.AsUSHORT & 0x1c) != 0)
         {
             writeLed(SYSTEM_GREEN, LED_OFF);
+            LogInfo("R700 : Exit Stream Thread Falg = 0x%x", device->Flags.AsUSHORT);
             goto exit;
         }
         int uSecInit   = clock();
@@ -366,7 +367,7 @@ int ImpinjReader_TelemetryWorker(
 
         while (uSecTimer < uSecTarget)
         {
-            if (device->ShuttingDown)
+            if (device->Flags.IsShuttingDown == 1)
             {
                 writeLed(SYSTEM_GREEN, LED_OFF);
                 break;

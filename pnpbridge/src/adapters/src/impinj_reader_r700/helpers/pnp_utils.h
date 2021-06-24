@@ -17,13 +17,13 @@ extern "C" {
 #include "azure_c_shared_utility/xlogging.h"
 #include "../impinj_reader_r700.h"
 
-static const char g_separator[] = "\r\n================================\r\n";
-
-void LogJsonPretty(
+void
+LogJsonPretty(
     const char* MsgFormat,
     JSON_Value* JsonValue, ...);
 
-void LogJsonPrettyStr(
+void
+LogJsonPrettyStr(
     const char* MsgFormat,
     char* JsonString, ...);
 
@@ -38,7 +38,8 @@ JSONArray2DtdlMap(
     const char* ArrayName,
     const char* MapName);
 
-char* DtdlMap2JSONArray(
+char*
+DtdlMap2JSONArray(
     const char* Payload,
     const char* ArrayName);
 
@@ -52,11 +53,40 @@ GetObjectStringFromPayload(
     JSON_Value* Payload,
     const char* ParamName);
 
-bool CleanAntennaConfig(
+bool
+CleanAntennaConfig(
     JSON_Object* jsonObj_AntennaConfig);
 
-void GetFirmwareVersion(
+void
+GetFirmwareVersion(
     PIMPINJ_READER Reader);
+
+void
+CheckRfidInterfaceType(
+    PIMPINJ_READER Reader);
+
+PUPGRADE_DATA
+DownloadFile(
+    const char* Url,
+    int IsAutoReboot);
+
+int
+RebootWorker(
+    void* context);
+
+bool
+ScheduleRebootWorker(
+    PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle);
+
+bool
+ScheduleUpgradeWorker(
+    PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle);
+
+int
+ProcessReboot(
+    PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
+    unsigned char** CommandResponse,
+    size_t* CommandResponseSize);
 
 #ifdef __cplusplus
 }

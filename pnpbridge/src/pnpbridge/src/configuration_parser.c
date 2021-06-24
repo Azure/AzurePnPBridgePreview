@@ -2,6 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #include "pnpbridge_common.h"
+#include "azure_c_shared_utility/hmacsha256.h"
+#include "azure_c_shared_utility/azure_base64.h"
 
 char* getcwd(char* buf, size_t size);
 
@@ -134,7 +136,57 @@ PCONNECTION_PARAMETERS PnpBridgeConfig_GetConnectionDetails(JSON_Object* Connect
             // Evaluate auth parameters
             {
                 if (AUTH_TYPE_SYMMETRIC_KEY == connParams->AuthParameters.AuthType) {
-                    const char* deviceKey = json_object_get_string(authParameters, PNP_CONFIG_CONNECTION_AUTH_TYPE_DEVICE_SYMM_KEY);
+
+                    const char *deviceKey = json_object_get_string(authParameters, PNP_CONFIG_CONNECTION_AUTH_TYPE_DEVICE_SYMM_KEY);
+
+                    if (connParams->ConnectionType == CONNECTION_TYPE_DPS)
+                    {
+                        // check if Group Symmetric Key is specified
+                        const char *groupKey = json_object_get_string(authParameters, PNP_CONFIG_CONNECTION_AUTH_TYPE_GROUP_SYMM_KEY);
+
+                        if (NULL != groupKey)
+                        {
+                            BUFFER_HANDLE decode_key;
+                            BUFFER_HANDLE hash;
+
+                            // LogInfo("Group key Found %s", groupKey);
+
+                            if ((decode_key = Azure_Base64_Decode(groupKey)) == NULL)
+                            {
+                                LogError("Failed to decode Group Key\r\n");
+                            }
+                            else if ((hash = BUFFER_new()) == NULL)
+                            {
+                                LogError("Failed to allocate buffer for hash");
+                                BUFFER_delete(decode_key);
+                            }
+                            else
+                            {
+                                if ((HMACSHA256_ComputeHash(BUFFER_u_char(decode_key), 
+                                                            BUFFER_length(decode_key),
+                                                            (const unsigned char *)connParams->u1.Dps.DeviceId,
+                                                            strlen(connParams->u1.Dps.DeviceId), hash)) != HMACSHA256_OK)
+                                {
+                                    LogError("Failed to compute hash for device id");
+                                }
+                                else
+                                {
+                                    STRING_HANDLE device_key = NULL;
+                                    device_key = Azure_Base64_Encode(hash);
+                                    deviceKey = STRING_c_str(device_key);
+                                    // LogInfo("Device Key Generated : %s", deviceKey);
+                                }
+                                BUFFER_delete(hash);
+                                BUFFER_delete(decode_key);
+                            }
+                        }
+                    }
+
+                    if (deviceKey == NULL)
+                    {
+                        deviceKey = json_object_get_string(authParameters, PNP_CONFIG_CONNECTION_AUTH_TYPE_DEVICE_SYMM_KEY);
+                    }
+
                     if (NULL == deviceKey) {
                         LogError("%s is missing in config", PNP_CONFIG_CONNECTION_AUTH_TYPE_DEVICE_SYMM_KEY);
                         result = IOTHUB_CLIENT_INVALID_ARG;

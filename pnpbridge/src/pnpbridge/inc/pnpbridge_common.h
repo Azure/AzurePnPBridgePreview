@@ -97,6 +97,7 @@ int Map_GetIndexValueFromKey(MAP_HANDLE handle, const char* key);
 #define PNP_CONFIG_CONNECTION_AUTH_TYPE_SYMM "symmetric_key"
 #define PNP_CONFIG_CONNECTION_AUTH_TYPE_X509 "x509"
 #define PNP_CONFIG_CONNECTION_AUTH_TYPE_DEVICE_SYMM_KEY "symmetric_key"
+#define PNP_CONFIG_CONNECTION_AUTH_TYPE_GROUP_SYMM_KEY "group_symmetric_key"
 
 #define PNP_CONFIG_ADAPTER_GLOBAL "pnp_bridge_adapter_global_configs"
 #define PNP_CONFIG_DEVICES "pnp_bridge_interface_components"

@@ -1,0 +1,18 @@
+{
+  "@id": "dtmi:impinj:FixedReader;12",
+  "@type": "Interface",
+  "displayName": {
+    "en": "Pnp Bridge Root Interface Model for Impinj R700"
+  },
+  "description": {
+    "en": "R700 IoT Plug and Play Bridge"
+  },
+  "contents": [
+    {
+      "@type": "Component",
+      "name": "R700",
+      "schema": "dtmi:impinj:R700;132"
+    }
+  ],
+  "@context": "dtmi:dtdl:context;2"
+}

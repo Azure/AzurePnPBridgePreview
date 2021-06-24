@@ -4,6 +4,7 @@
 MU_DEFINE_ENUM_STRINGS_WITHOUT_INVALID(R700_REST_REQUEST, R700_REST_REQUEST_VALUES);
 
 //#define DEBUG_REST
+//#define DEBUG_REST_STATUS
 
 JSON_Value*
 ImpinjReader_Convert_NetworkInterface(
@@ -11,11 +12,9 @@ ImpinjReader_Convert_NetworkInterface(
 
 JSON_Value*
 ImpinjReader_Convert_DeviceStatus(
-    char* Json_String);
+    char* Json_String,
+    bool bLog);
 
-JSON_Value*
-ImpinjReader_Convert_UpgradeStatus(
-    char* Json_String);
 /****************************************************************
 REST APIS
 ****************************************************************/
@@ -39,6 +38,24 @@ ImpinjReader_RequestDelete(
     {
         LogError("R700 : API not supported.  Supported version %s", MU_ENUM_TO_STRING(R700_REST_VERSION, Device->ApiVersion));
         *HttpStatus = R700_STATUS_NOT_ALLOWED;
+        return NULL;
+    }
+    else if (Device->Flags.IsRESTEnabled == 0 && R700_Request->IsRestRequired == true)
+    {
+        LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsRebootPending == 1)
+    {
+        LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsShuttingDown == 1)
+    {
+        LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
         return NULL;
     }
 
@@ -84,17 +101,44 @@ ImpinjReader_RequestGet(
     char* propertyName = R700_Request->Name;
 
     char buffer[R700_PRESET_ID_LENGTH];
-
+    bool bLog  = false;
     char api[] = "GET";
 
 #ifdef DEBUG_REST
-    LogInfo("R700 : %s() enter. API=%s API Ver=%s", __FUNCTION__, MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request), MU_ENUM_TO_STRING(R700_REST_VERSION, R700_Request->ApiVersion));
+
+#ifdef DEBUG_REST_STATUS
+    bLog = true;
+#else
+    bLog = (R700_Request->Request != READER_STATUS_POLL);
+#endif
+    if (bLog)
+    {
+        LogInfo("R700 : %s() enter. API=%s API Ver=%s", __FUNCTION__, MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request), MU_ENUM_TO_STRING(R700_REST_VERSION, R700_Request->ApiVersion));
+    }
 #endif
 
     if (Device->ApiVersion < R700_Request->ApiVersion)
     {
         LogError("R700 : API not supported.  Supported version %s", MU_ENUM_TO_STRING(R700_REST_VERSION, Device->ApiVersion));
         *HttpStatus = R700_STATUS_NOT_ALLOWED;
+        return NULL;
+    }
+    else if (Device->Flags.IsRESTEnabled == 0 && R700_Request->IsRestRequired == true)
+    {
+        LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsRebootPending == 1)
+    {
+        LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsShuttingDown == 1)
+    {
+        LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
         return NULL;
     }
 
@@ -109,7 +153,10 @@ ImpinjReader_RequestGet(
     }
 
 #ifdef DEBUG_REST
-    LogInfo("R700 : Curl %s >> Endpoint \"%s\"", api, endpoint);
+    if (bLog)
+    {
+        LogInfo("R700 : Curl %s >> Endpoint \"%s\"", api, endpoint);
+    }
 #endif
 
     if (R700_Request->Request == READER_STATUS_POLL)
@@ -121,14 +168,14 @@ ImpinjReader_RequestGet(
         jsonResult = curlStaticGet(Device->curl_static_session, endpoint, HttpStatus);
     }
 
-    // LogInfo("R700 : Curl %s << Status %d", api, *HttpStatus);
+    //LogInfo("R700 : Curl %s << Status %d %s", api, *HttpStatus, jsonResult);
 
     switch (R700_Request->Request)
     {
         case READER_STATUS_POLL:
         case READER_STATUS_GET:
         case READER_STATUS:
-            jsonVal = ImpinjReader_Convert_DeviceStatus(jsonResult);
+            jsonVal = ImpinjReader_Convert_DeviceStatus(jsonResult, bLog);
             break;
 
         case KAFKA:
@@ -152,7 +199,7 @@ ImpinjReader_RequestGet(
         case SYSTEM_IMAGE_UPGRADE_GET:
             jsonVal = ImpinjReader_Convert_UpgradeStatus(jsonResult);
             break;
-        
+
         case SYSTEM_IMAGE_UPGRADE:
             jsonVal = ImpinjReader_Convert_UpgradeStatus(jsonResult);
             break;
@@ -203,6 +250,24 @@ ImpinjReader_RequestPut(
     {
         LogError("R700 : API not supported.  Supported version %s", MU_ENUM_TO_STRING(R700_REST_VERSION, Device->ApiVersion));
         *HttpStatus = R700_STATUS_NOT_ALLOWED;
+        return NULL;
+    }
+    else if (Device->Flags.IsRESTEnabled == 0 && R700_Request->IsRestRequired == true)
+    {
+        LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsRebootPending == 1)
+    {
+        LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsShuttingDown == 1)
+    {
+        LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
         return NULL;
     }
 
@@ -275,6 +340,24 @@ ImpinjReader_RequestPost(
         *HttpStatus = R700_STATUS_NOT_ALLOWED;
         return NULL;
     }
+    else if (Device->Flags.IsRESTEnabled == 0 && R700_Request->IsRestRequired == true)
+    {
+        LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsRebootPending == 1)
+    {
+        LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (Device->Flags.IsShuttingDown == 1)
+    {
+        LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
 
     if (R700_Request->Request == PROFILES_START)
     {
@@ -283,10 +366,9 @@ ImpinjReader_RequestPost(
         endpoint = (char*)&endPointData;
         postData = NULL;
     }
-    else if (R700_Request->Request == SYSTEM_IMAGE_UPGRADE_UPLOAD)
+    else if (R700_Request->Request == SYSTEM_REBOOT)
     {
-        *HttpStatus = R700_STATUS_NOT_IMPLEMENTED;
-        return jsonVal;
+        // Rebooting the device.  Stop polling thread
     }
     else
     {
@@ -308,6 +390,174 @@ ImpinjReader_RequestPost(
 
     return jsonVal;
 }
+
+/****************************************************************
+Send /system/image/upgrade REST API
+****************************************************************/
+R700_UPGRADE_STATUS
+CheckUpgardeStatus(
+    PIMPINJ_READER Reader,
+    JSON_Value** JsonValue)
+{
+    PIMPINJ_R700_REST r700_GetUpgradeStatus = &R700_REST_LIST[SYSTEM_IMAGE_UPGRADE];
+    JSON_Value* jsonVal_UpgradeStatus       = NULL;
+    JSON_Object* jsonObj_UpgradeStatus      = NULL;
+    char* jsonResult;
+    int httpStatus;
+    bool ret = false;
+    const char* message;
+    const char* status;
+    R700_UPGRADE_STATUS upgradeStatus = FAILED;
+
+    jsonResult = curlStaticGet(Reader->curl_static_session, r700_GetUpgradeStatus->EndPoint, &httpStatus);
+
+    if ((jsonVal_UpgradeStatus = json_parse_string(jsonResult)) == NULL)
+    {
+        LogInfo("R700 :  Unable to retrieve JSON Value for Upgrade Status from reader.  Check that HTTPS is enabled.");
+    }
+    else if ((jsonObj_UpgradeStatus = json_value_get_object(jsonVal_UpgradeStatus)) == NULL)
+    {
+        LogInfo("R700 :  Unable to retrieve JSON Object for Upgrade Status. Check that HTTPS is enabled.");
+    }
+    else if ((status = json_object_get_string(jsonObj_UpgradeStatus, "status")) == NULL)
+    {
+        LogInfo("R700 :  Unable to retrieve 'status'.  Check that HTTPS is enabled.");
+    }
+    else if ((message = json_object_get_string(jsonObj_UpgradeStatus, "message")) == NULL)
+    {
+        LogInfo("R700 :  Unable to retrieve 'message'.  Check that HTTPS is enabled.");
+    }
+    else
+    {
+        if (strcmp(status, "ready") == 0)
+        {
+            upgradeStatus                  = READY;
+            Reader->Flags.IsUpgradePending = 0;
+        }
+        else if (strcmp(status, "verifying") == 0)
+        {
+            upgradeStatus                  = VERIFYING;
+            Reader->Flags.IsUpgradePending = 1;
+        }
+        else if (strcmp(status, "installing") == 0)
+        {
+            upgradeStatus                  = INSTALLING;
+            Reader->Flags.IsUpgradePending = 1;
+        }
+        else if (strcmp(status, "successful") == 0)
+        {
+            Reader->Flags.IsUpgradePending = 0;
+            if (strcmp(message, "Waiting for manual reboot") == 0)
+            {
+                upgradeStatus = REBOOT_REQUIRED;
+            }
+            else
+            {
+                upgradeStatus = SUCCESSFUL;
+            }
+            // for testing
+            upgradeStatus = READY;
+        }
+        else if (strcmp(status, "failed ") == 0)
+        {
+            Reader->Flags.IsUpgradePending = 0;
+            upgradeStatus                  = FAILED;
+        }
+    }
+
+    if (jsonVal_UpgradeStatus != NULL)
+    {
+        if (JsonValue)
+        {
+            *JsonValue = jsonVal_UpgradeStatus;
+        }
+        else
+        {
+            json_value_free(jsonVal_UpgradeStatus);
+        }
+    }
+
+    return upgradeStatus;
+}
+
+JSON_Value*
+ImpinjReader_RequestUpgrade(
+    PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
+    PIMPINJ_R700_REST R700_Request,
+    PUPGRADE_DATA Upgrade_Data,
+    int* HttpStatus)
+{
+    char buffer[256] = {0};
+    char* jsonResult;
+    JSON_Value* jsonVal   = NULL;
+    PIMPINJ_READER reader = PnpComponentHandleGetContext(PnpComponentHandle);
+
+#ifdef DEBUG_REST
+    char api[] = "POST Upload File";
+    LogInfo("R700 : %s() API=%s", __FUNCTION__, MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+#endif
+
+    if (reader->ApiVersion < R700_Request->ApiVersion)
+    {
+        LogError("R700 : API not supported.  Supported version %s", MU_ENUM_TO_STRING(R700_REST_VERSION, reader->ApiVersion));
+        *HttpStatus = R700_STATUS_NOT_ALLOWED;
+        return NULL;
+    }
+    else if (reader->Flags.IsRESTEnabled == 0 && R700_Request->IsRestRequired == true)
+    {
+        LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (reader->Flags.IsRebootPending == 1)
+    {
+        LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+    else if (reader->Flags.IsShuttingDown == 1)
+    {
+        LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, R700_Request->Request));
+        *HttpStatus = R700_STATUS_CONFLICT;
+        return NULL;
+    }
+
+
+#ifdef DEBUG_REST
+    LogInfo("R700 : Curl %s >> Endpoint \"%s\"", api, R700_Request->EndPoint);
+#endif
+
+    reader->Flags.IsUpgradePending = 1;
+
+    jsonResult = curlPostUploadFile(reader->curl_static_session, R700_Request->EndPoint, Upgrade_Data, HttpStatus, buffer);
+
+
+    if (*HttpStatus == R700_STATUS_ACCEPTED)
+    {
+        // Schedule a worker thread to update UpgradeStatus read only property
+        if (!ScheduleUpgradeWorker(PnpComponentHandle))
+        {
+            // this is not fatal so continue..
+            LogError("R700 : Failed to schedule upgrade worker");
+        }
+
+        if (Upgrade_Data->isAutoReboot)
+        {
+            if (!ScheduleRebootWorker(PnpComponentHandle))
+            {
+                LogError("R700 : Failed to schedule reboot worker");
+            }
+        }
+        jsonVal = json_parse_string(g_upgradeAccepted);
+    }
+    else
+    {
+        jsonVal = json_parse_string(jsonResult);
+    }
+
+    return jsonVal;
+}
+
 
 /****************************************************************
 Process REST API Response
@@ -352,7 +602,7 @@ ImpinjReader_ProcessResponse(
             }
             else if ((jsonObj = json_value_get_object(JsonVal_Response)) == NULL)
             {
-                LogError("R700 : Unable to retrieve JSON Object for %s", g_statusResponseMessage);
+                LogError("R700 : Unable to retrieve JSON Object for Response.  Payload %s", g_statusResponseMessage);
             }
             else if (json_object_get_count(jsonObj) == 0)
             {
@@ -370,6 +620,20 @@ ImpinjReader_ProcessResponse(
             {
                 if (RestRequest->DtdlType == COMMAND)
                 {
+                    JSON_Value* jsonVal_Return;
+
+                    if ((RestRequest->Request == SYSTEM_IMAGE_UPGRADE_UPLOAD) ||
+                        (RestRequest->Request == SYSTEM_POWER_SET))
+                    {
+                        // for Upgrade, return the entire payload.
+                        // Command Response in JSON
+                        jsonVal_Return = JsonVal_Response;
+                    }
+                    else
+                    {
+                        jsonVal_Return = jsonVal;
+                    }
+
                     // Command Response in JSON
                     if ((descriptionBuffer = (char*)calloc(1, size + 1)) == NULL)
                     {
@@ -377,7 +641,7 @@ ImpinjReader_ProcessResponse(
                                  "for COMMAND response",
                                  size);
                     }
-                    else if (json_serialize_to_buffer(jsonVal, (char*)descriptionBuffer, size + 1) != JSONSuccess)
+                    else if (json_serialize_to_buffer(jsonVal_Return, (char*)descriptionBuffer, size + 1) != JSONSuccess)
                     {
                         LogError("R700 : Failed to serialize description to "
                                  "buffer for COMMAND");
@@ -403,11 +667,10 @@ ImpinjReader_ProcessResponse(
             }
 
             break;
-
         case R700_STATUS_BAD_REQUEST:
         case R700_STATUS_FORBIDDEN:
         case R700_STATUS_NOT_FOUND:
-        case R700_STATUS_NOT_CONFLICT:
+        case R700_STATUS_CONFLICT:
         case R700_STATUS_INTERNAL_ERROR:
             // should not happen
             assert(false);
@@ -443,7 +706,8 @@ or
 "{"message":"Message String. Invalid ID. Detail."}"
 
 ****************************************************************/
-char* ImpinjReader_ProcessErrorResponse(
+char*
+ImpinjReader_ProcessErrorResponse(
     JSON_Value* JsonVal_ErrorResponse,
     R700_DTDL_TYPE DtdlType)
 {
@@ -670,14 +934,18 @@ Command response containing "status" confused IoT Explorer
 ****************************************************************/
 JSON_Value*
 ImpinjReader_Convert_DeviceStatus(
-    char* Json_String)
+    char* Json_String,
+    bool bLog)
 {
     const char* deviceStatus          = NULL;
     JSON_Value* jsonVal_deviceStatus  = NULL;
     JSON_Object* jsonObj_deviceStatus = NULL;
 
 #ifdef DEBUG_REST
-    LogJsonPrettyStr("R700 : %s() enter", Json_String, __FUNCTION__);
+    if (bLog)
+    {
+        LogJsonPrettyStr("R700 : %s() enter", Json_String, __FUNCTION__);
+    }
 #endif
 
     if ((jsonVal_deviceStatus = json_parse_string(Json_String)) == NULL)
@@ -740,4 +1008,23 @@ ImpinjReader_Convert_UpgradeStatus(
     }
 
     return jsonVal_deviceStatus;
+}
+
+PUPGRADE_DATA
+ImpinjReader_Init_UpgradeData(
+    PIMPINJ_READER Reader,
+    char* Endpoint)
+{
+    PUPGRADE_DATA upgradeData = (PUPGRADE_DATA)calloc(1, sizeof(UPGRADE_DATA));
+    PURL_DATA urlData         = &upgradeData->urlData;
+
+    if (urlData)
+    {
+        strcpy(urlData->url, Reader->baseUrl);
+        strcat(urlData->url, Endpoint);
+        strcpy(urlData->username, Reader->username);
+        strcpy(urlData->password, Reader->password);
+    }
+
+    return upgradeData;
 }

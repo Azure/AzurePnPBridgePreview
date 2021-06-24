@@ -1,10 +1,12 @@
 #include "pnp_command.h"
 #include "restapi.h"
+#include <unistd.h>
 
 /****************************************************************
 Creates command response payload
 ****************************************************************/
-int ImpinjReader_SetCommandResponse(
+int
+ImpinjReader_SetCommandResponse(
     unsigned char** CommandResponse,
     size_t* CommandResponseSize,
     const unsigned char* ResponseData)
@@ -13,7 +15,7 @@ int ImpinjReader_SetCommandResponse(
 
     if (ResponseData == NULL)
     {
-        LogError("Impinj Reader Adapter:: Response Data is empty");
+        LogError("R700 : Response Data is empty");
         *CommandResponseSize = 0;
         return PNP_STATUS_INTERNAL_ERROR;
     }
@@ -24,7 +26,7 @@ int ImpinjReader_SetCommandResponse(
     // Allocate a copy of the response data to return to the invoker. Caller will free this.
     if (mallocAndStrcpy_s((char**)CommandResponse, (char*)ResponseData) != 0)
     {
-        LogError("Impinj Reader Adapter:: Unable to allocate response data");
+        LogError("R700 : Unable to allocate response data");
         result = PNP_STATUS_INTERNAL_ERROR;
     }
 
@@ -34,7 +36,8 @@ int ImpinjReader_SetCommandResponse(
 /****************************************************************
 A callback for Direct Method
 ****************************************************************/
-int OnCommandCallback(
+int
+OnCommandCallback(
     PNPBRIDGE_COMPONENT_HANDLE PnpComponentHandle,
     const char* CommandName,
     JSON_Value* CommandValue,
@@ -50,6 +53,8 @@ int OnCommandCallback(
     char* restParameter              = NULL;
     const char* responseString       = NULL;
     PIMPINJ_R700_REST r700_Request   = NULL;
+    PUPGRADE_DATA upgradeData        = NULL;
+    R700_UPGRADE_STATUS upgradeStatus = UNKNOWN;
 
     LogJsonPretty("R700 : %s() enter.  Command Name='%s'", CommandValue, __FUNCTION__, CommandName);
 
@@ -59,16 +64,37 @@ int OnCommandCallback(
         {
             continue;
         }
-        else if (strcmp(CommandName, R700_REST_LIST[i].Name) == 0)  // find command name from list 
+        else if (strcmp(CommandName, R700_REST_LIST[i].Name) == 0)   // find command name from list
         {
             r700_Request = &R700_REST_LIST[i];
 
-            LogInfo("R700 : Found Command %s : Property %s", CommandName, r700_Request->Name);
+            LogInfo("R700 : Found Command %s", r700_Request->Name);
 
             if (device->ApiVersion < r700_Request->ApiVersion)
             {
                 LogError("R700 : Unsupported API. Please upgrade firmware");
                 httpStatus = R700_STATUS_NOT_ALLOWED;
+                break;
+            }
+            else if (device->Flags.IsRESTEnabled == 0 && R700_REST_LIST[i].IsRestRequired == true)
+            {
+                LogError("R700 : RESTFul API not enabled : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+                jsonVal_RestResponse = json_parse_string(g_restApiNotEnabled);
+                httpStatus           = R700_STATUS_CONFLICT;
+                break;
+            }
+            else if (device->Flags.IsRebootPending == 1)
+            {
+                LogInfo("R700 : Reboot Pending : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+                jsonVal_RestResponse = json_parse_string(g_rebootPendingResponse);
+                httpStatus           = R700_STATUS_CONFLICT;
+                break;
+            }
+            else if (device->Flags.IsShuttingDown == 1)
+            {
+                LogInfo("R700 : Shutting Down : %s", MU_ENUM_TO_STRING(R700_REST_REQUEST, r700_Request->Request));
+                jsonVal_RestResponse = json_parse_string(g_rebootPendingResponse);
+                httpStatus           = R700_STATUS_CONFLICT;
                 break;
             }
 
@@ -79,7 +105,7 @@ int OnCommandCallback(
                     restParameter = (char*)GetStringFromPayload(CommandValue, g_presetId);
                     restBody      = PreProcessSetPresetIdPayload(CommandValue);
                     break;
-                
+
                 case PROFILES_INVENTORY_PRESETS_ID_SET_PASSTHROUGH:
                     // Receive Preset ID
                     restParameter = (char*)GetStringFromPayload(CommandValue, g_presetId);
@@ -103,6 +129,26 @@ int OnCommandCallback(
                     // takes JSON payload for REST API Body
                     restBody = json_serialize_to_string(CommandValue);
                     break;
+
+                case SYSTEM_REBOOT:
+                    return ProcessReboot(PnpComponentHandle, CommandResponse, CommandResponseSize);   // never returns
+                    break;
+
+                case SYSTEM_IMAGE_UPGRADE_UPLOAD: {
+                    upgradeStatus = CheckUpgardeStatus(device, NULL);
+
+                    if (upgradeStatus != READY)
+                    {
+                        LogError("R700 : Reader is not ready for upgrade. Upgrade Status %d", upgradeStatus);
+                        jsonVal_RestResponse = json_parse_string(g_upgradeNotReady);
+                        httpStatus           = R700_STATUS_CONFLICT;
+                    }
+                    else
+                    {
+                        upgradeData = ProcessDownloadFirmware(device, CommandValue);
+                    }
+                    break;
+                }
             }
 
             // Call REST API
@@ -117,6 +163,38 @@ int OnCommandCallback(
                 case POST:
                     jsonVal_RestResponse = ImpinjReader_RequestPost(device, r700_Request, restParameter, &httpStatus);
                     break;
+                case POST_UPLOAD:
+                    if (upgradeStatus != READY)
+                    {
+                        break;
+                    }
+                    else if (upgradeData == NULL)
+                    {
+                        LogError("R700 : Failed to allocate download data");
+                        httpStatus = R700_STATUS_INTERNAL_ERROR;
+                        mallocAndStrcpy_s(&restResponse, g_upgradeFailAlloc);
+                        break;
+                    }
+                    else if (upgradeData->statusCode != R700_STATUS_OK)
+                    {
+                        LogError("R700 : Failed to download firmware upgrade file.");
+                        mallocAndStrcpy_s(&restResponse, g_upgradeFailDownload);
+                        httpStatus = upgradeData->statusCode;
+                    }
+                    else
+                    {
+                        jsonVal_RestResponse = ImpinjReader_RequestUpgrade(PnpComponentHandle, r700_Request, upgradeData, &httpStatus);
+                    }
+
+                    if (access(upgradeData->downloadFileName, F_OK) == 0)
+                    {
+                        // file exists.  Delete
+                        // LogInfo("R700 : Delete Firmware Upgrade File %s", download_Data->downloadFileName);
+                        remove(upgradeData->downloadFileName);
+                    }
+
+                    break;
+
                 case DELETE:
                     jsonVal_RestResponse = ImpinjReader_RequestDelete(device, r700_Request, restParameter, &httpStatus);
                     break;
@@ -127,7 +205,10 @@ int OnCommandCallback(
 
     if (r700_Request != NULL)
     {
-        LogJsonPretty("R700 : Command Response", jsonVal_RestResponse);
+        if (jsonVal_RestResponse)
+        {
+            LogJsonPretty("R700 : Command Response", jsonVal_RestResponse);
+        }
 
         switch (httpStatus)
         {
@@ -138,13 +219,12 @@ int OnCommandCallback(
 
             case R700_STATUS_ACCEPTED:
                 restResponse = (char*)ImpinjReader_ProcessResponse(r700_Request, jsonVal_RestResponse, httpStatus);
-                LogInfo("R700 : Command Response \"%s\"", restResponse);
                 break;
 
             case R700_STATUS_BAD_REQUEST:
             case R700_STATUS_FORBIDDEN:
             case R700_STATUS_NOT_FOUND:
-            case R700_STATUS_NOT_CONFLICT:
+            case R700_STATUS_CONFLICT:
             case R700_STATUS_INTERNAL_ERROR:
                 restResponse = ImpinjReader_ProcessErrorResponse(jsonVal_RestResponse, r700_Request->DtdlType);
                 break;
@@ -161,7 +241,14 @@ int OnCommandCallback(
     {
         if (r700_Request->Request == SYSTEM_POWER_SET)
         {
-            responseString = &g_powerSourceAlreadyConfigure[0];
+            if (httpStatus == R700_STATUS_ACCEPTED)
+            {
+                responseString = g_powerSourceRequireReboot;
+            }
+            else if (httpStatus == R700_STATUS_NO_CONTENT)
+            {
+                responseString = g_powerSourceAlreadyConfigure;
+            }
         }
         else if (httpStatus == R700_STATUS_NO_CONTENT)
         {
@@ -171,12 +258,12 @@ int OnCommandCallback(
             }
             else
             {
-                responseString = &g_noContentResponse[0];
+                responseString = g_noContentResponse;
             }
         }
         else
         {
-            responseString = &g_emptyCommandResponse[0];
+            responseString = g_emptyCommandResponse;
         }
     }
     else
@@ -190,6 +277,12 @@ int OnCommandCallback(
     }
 
     // clean up
+
+    if (upgradeData)
+    {
+        free(upgradeData);
+    }
+
     if (restBody)
     {
         json_free_serialized_string(restBody);
@@ -208,7 +301,8 @@ int OnCommandCallback(
     return httpStatus;
 }
 
-char* PreProcessSetPresetIdPayload(
+char*
+PreProcessSetPresetIdPayload(
     JSON_Value* Payload)
 {
     JSON_Object* jsonOjb_PresetId;
@@ -246,7 +340,8 @@ char* PreProcessSetPresetIdPayload(
     return NULL;
 }
 
-char* PreProcessTagPresenceResponse(
+char*
+PreProcessTagPresenceResponse(
     JSON_Value* Payload)
 {
     JSON_Object* jsonObj_Tag;
@@ -326,4 +421,46 @@ char* PreProcessTagPresenceResponse(
     }
 
     return returnBuffer;
+}
+
+PUPGRADE_DATA
+ProcessDownloadFirmware(
+    PIMPINJ_READER Reader,
+    JSON_Value* Payload)
+{
+    const char* url                  = NULL;
+    int isAutoReboot                 = -1;
+    PUPGRADE_DATA upgradeData        = NULL;
+
+    //LogInfo("R700 : %s()", __FUNCTION__);
+
+    if (json_value_get_type(Payload) != JSONObject)
+    {
+        LogError("R700 : JSON field %s is not Object", g_upgradeFile);
+    }
+    else
+    {
+        JSON_Object* jsonObj_Upgrade = NULL;
+
+        if ((jsonObj_Upgrade = json_value_get_object(Payload)) == NULL)
+        {
+            LogError("R700 : Unable to retrieve Upgrade Command payload JSON object");
+        }
+        else if ((url = json_object_get_string(jsonObj_Upgrade, g_upgradeFile)) == NULL)
+        {
+            LogError("R700 : Unable to retrieve '%s' JSON string", g_upgradeFile);
+        }
+        else
+        {
+            if ((isAutoReboot = json_object_get_boolean(jsonObj_Upgrade, g_upgradeAutoReboot)) == -1)
+            {
+                LogError("R700 : Unable to retrieve '%s' JSON boolean", g_upgradeAutoReboot);
+                isAutoReboot = 0;
+            }
+
+            upgradeData = DownloadFile(url, isAutoReboot);
+        }
+    }
+
+    return upgradeData;
 }
